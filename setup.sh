@@ -25,6 +25,113 @@ print_error() {
     echo -e "\\033[1;31m[ERROR]\\033[0m $1"
 }
 
+# Optimized dotfiles function
+dotfiles() {
+    git --git-dir="$DOTFILES_DIR" --work-tree="$HOME" "$@"
+}
+
+# --- Performance Optimizations ---
+apply_git_performance_optimizations() {
+    print_info "⚡ Applying Git performance optimizations..."
+    
+    if [ -d "$DOTFILES_DIR" ]; then
+        dotfiles config core.untrackedCache true
+        dotfiles config core.preloadindex true
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            dotfiles config core.fsmonitor true
+        fi
+        dotfiles config pack.threads 0
+        print_success "Git performance optimizations applied"
+    else
+        print_warning "Dotfiles directory not found, skipping Git optimizations"
+    fi
+}
+
+# --- Parallel Package Management ---
+# Function to install packages in parallel when safe
+install_packages_parallel() {
+    local packages=("$@")
+    
+    if [ ${#packages[@]} -eq 0 ]; then
+        return 0
+    fi
+    
+    print_info "📦 Installing packages: ${packages[*]}"
+    
+    # Check if we can parallelize based on package manager
+    case "$PACKAGE_MANAGER" in
+        apt-get | apt)
+            # APT can handle multiple packages in one command efficiently
+            if $IS_SUDO_NEEDED; then
+                sudo "$PACKAGE_MANAGER" install -y "${packages[@]}"
+            else
+                "$PACKAGE_MANAGER" install -y "${packages[@]}"
+            fi
+            ;;
+        brew)
+            # Homebrew can install multiple packages in parallel
+            "$PACKAGE_MANAGER" install "${packages[@]}"
+            ;;
+        pacman)
+            # Pacman can handle multiple packages efficiently
+            if $IS_SUDO_NEEDED; then
+                sudo "$PACKAGE_MANAGER" -S --noconfirm "${packages[@]}"
+            else
+                "$PACKAGE_MANAGER" -S --noconfirm "${packages[@]}"
+            fi
+            ;;
+        *)
+            # For other package managers, install sequentially but with background jobs if possible
+            if command -v parallel &>/dev/null; then
+                export -f install_single_package
+                export PACKAGE_MANAGER IS_SUDO_NEEDED
+                printf '%s\n' "${packages[@]}" | parallel install_single_package {}
+            else
+                # Fallback to background jobs
+                for package in "${packages[@]}"; do
+                    install_single_package "$package" &
+                done
+                wait
+            fi
+            ;;
+    esac
+}
+
+# Helper function for single package installation
+install_single_package() {
+    local package="$1"
+    case "$PACKAGE_MANAGER" in
+        yum)
+            if $IS_SUDO_NEEDED; then
+                sudo "$PACKAGE_MANAGER" install -y "$package"
+            else
+                "$PACKAGE_MANAGER" install -y "$package"
+            fi
+            ;;
+        dnf)
+            if $IS_SUDO_NEEDED; then
+                sudo "$PACKAGE_MANAGER" install -y "$package"
+            else
+                "$PACKAGE_MANAGER" install -y "$package"
+            fi
+            ;;
+        zypper)
+            if $IS_SUDO_NEEDED; then
+                sudo "$PACKAGE_MANAGER" install -y "$package"
+            else
+                "$PACKAGE_MANAGER" install -y "$package"
+            fi
+            ;;
+        pkg)
+            if $IS_SUDO_NEEDED; then
+                sudo "$PACKAGE_MANAGER" install -y "$package"
+            else
+                "$PACKAGE_MANAGER" install -y "$package"
+            fi
+            ;;
+    esac
+}
+
 # --- Main Setup Logic ---
 print_info "🛠️  Starting multi-shell advanced dotfiles setup for Unix-like systems..."
 
@@ -106,44 +213,44 @@ apt-get | apt)
     HAS_UPDATE_FUNCTION=true
     UPDATE_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" update; else "$PACKAGE_MANAGER" update; fi; }
     HAS_INSTALL_FUNCTION=true
-    INSTALL_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" install -y git zsh vim curl; else "$PACKAGE_MANAGER" install -y git zsh vim curl; fi; }
+    INSTALL_PKGS_IMPL() { install_packages_parallel git zsh vim curl; }
     ;;
 yum)
     # yum update can be verbose/interactive; often skipped in scripts.
     # HAS_UPDATE_FUNCTION remains false.
     HAS_INSTALL_FUNCTION=true
-    INSTALL_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" install -y git zsh vim curl; else "$PACKAGE_MANAGER" install -y git zsh vim curl; fi; }
+    INSTALL_PKGS_IMPL() { install_packages_parallel git zsh vim curl; }
     ;;
 dnf)
     HAS_UPDATE_FUNCTION=true # dnf check-update is generally non-intrusive
     UPDATE_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" check-update >/dev/null || true; else "$PACKAGE_MANAGER" check-update >/dev/null || true; fi; }
     HAS_INSTALL_FUNCTION=true
-    INSTALL_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" install -y git zsh vim curl; else "$PACKAGE_MANAGER" install -y git zsh vim curl; fi; }
+    INSTALL_PKGS_IMPL() { install_packages_parallel git zsh vim curl; }
     ;;
 pacman)
     HAS_UPDATE_FUNCTION=true
     UPDATE_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" -Syu --noconfirm; else "$PACKAGE_MANAGER" -Syu --noconfirm; fi; }
     HAS_INSTALL_FUNCTION=true
-    INSTALL_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" -S --noconfirm git zsh vim curl; else "$PACKAGE_MANAGER" -S --noconfirm git zsh vim curl; fi; }
+    INSTALL_PKGS_IMPL() { install_packages_parallel git zsh vim curl; }
     ;;
 zypper)
     HAS_UPDATE_FUNCTION=true
     UPDATE_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" refresh; else "$PACKAGE_MANAGER" refresh; fi; }
     HAS_INSTALL_FUNCTION=true
-    INSTALL_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" install -y git zsh vim curl; else "$PACKAGE_MANAGER" install -y git zsh vim curl; fi; }
+    INSTALL_PKGS_IMPL() { install_packages_parallel git zsh vim curl; }
     ;;
 pkg) # FreeBSD
     HAS_UPDATE_FUNCTION=true
     UPDATE_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" update -q; else "$PACKAGE_MANAGER" update -q; fi; }
     HAS_INSTALL_FUNCTION=true
-    INSTALL_PKGS_IMPL() { if $IS_SUDO_NEEDED; then sudo "$PACKAGE_MANAGER" install -y git zsh vim curl; else "$PACKAGE_MANAGER" install -y git zsh vim curl; fi; }
+    INSTALL_PKGS_IMPL() { install_packages_parallel git zsh vim curl; }
     ;;
 brew) # macOS
     IS_SUDO_NEEDED=false
     HAS_UPDATE_FUNCTION=true
     UPDATE_PKGS_IMPL() { "$PACKAGE_MANAGER" update; }
     HAS_INSTALL_FUNCTION=true
-    INSTALL_PKGS_IMPL() { "$PACKAGE_MANAGER" install git zsh vim curl; }
+    INSTALL_PKGS_IMPL() { install_packages_parallel git zsh vim curl; }
     ;;
 *)
     # HAS_UPDATE_FUNCTION and HAS_INSTALL_FUNCTION remain false.
@@ -166,6 +273,9 @@ else
     # This case is hit if PACKAGE_MANAGER was not found (HAS_INSTALL_FUNCTION is false)
     INSTALL_PKGS_IMPL # This will print the "No supported package manager" warning
 fi
+
+# Apply Git performance optimizations
+apply_git_performance_optimizations
 
 # Configure Zsh if available (with advanced features)
 if command -v zsh &>/dev/null; then

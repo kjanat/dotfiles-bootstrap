@@ -17,9 +17,9 @@ if (-not (Get-Command dotfiles -ErrorAction SilentlyContinue)) {
 function Sync-Dotfiles {
 	<#
     .SYNOPSIS
-        Synchronizes dotfiles across machines
+        Synchronizes dotfiles across machines with parallel processing
     .DESCRIPTION
-        Pulls latest changes from remote, handles conflicts, and reports status
+        Pulls latest changes from remote, handles conflicts with parallel backup, and reports status
     .EXAMPLE
         Sync-Dotfiles
     #>
@@ -28,33 +28,46 @@ function Sync-Dotfiles {
 	# Stash any local changes
 	dotfiles stash
     
-	# Pull latest changes
+	# Pull latest changes with parallel fetch
+	Write-Host 'Fetching with parallel processing...' -ForegroundColor Yellow
+	dotfiles fetch --parallel=8
 	$pullResult = dotfiles pull 2>&1
     
-	# Check for conflicts
+	# Check for conflicts and handle them with parallel processing
 	if ($LASTEXITCODE -ne 0) {
-		Write-Host 'Conflicts detected. Backing up local changes...' -ForegroundColor Yellow
+		Write-Host 'Conflicts detected. Backing up local changes with parallel processing...' -ForegroundColor Yellow
         
 		# Create backup directory if it doesn't exist
 		$backupDir = "$HOME\.dotfiles-backup\$(Get-Date -Format 'yyyy-MM-dd-HHmmss')"
 		New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
         
-		# Extract conflict file paths and back them up
+		# Extract conflict file paths and back them up in parallel
 		$conflictFiles = $pullResult | Where-Object { $_ -match 'CONFLICT \(.*\): .*' } | 
 			ForEach-Object { $_ -replace 'CONFLICT \(.*\): .* in (.*)', '$1' }
         
-		foreach ($file in $conflictFiles) {
-			$relativePath = $file.Replace("$HOME\", '')
-			$destination = Join-Path $backupDir $relativePath
+		if ($conflictFiles) {
+			Write-Host "Backing up $($conflictFiles.Count) conflicted files in parallel..." -ForegroundColor Yellow
+			$homeDir = $HOME
+			$conflictFiles | ForEach-Object -Parallel {
+				$file = $_
+				$backupDir = $using:backupDir
+				$homeDir = $using:homeDir
+				
+				$relativePath = $file.Replace("$homeDir\", '')
+				$destination = Join-Path $backupDir $relativePath
+				$source = $file
             
-			# Create directory structure
-			$parentDir = Split-Path $destination -Parent
-			if (-not (Test-Path $parentDir)) {
-				New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-			}
+				# Create directory structure
+				$parentDir = Split-Path $destination -Parent
+				if (-not (Test-Path $parentDir)) {
+					New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+				}
             
-			# Copy the file
-			Copy-Item -Path $file -Destination $destination -Force
+				# Copy the file
+				if (Test-Path $source) {
+					Copy-Item -Path $source -Destination $destination -Force
+				}
+			} -ThrottleLimit 8
 		}
         
 		# Reset conflicts
@@ -73,8 +86,9 @@ function Sync-Dotfiles {
 		Write-Host "Your changes are saved in the stash. Use 'dotfiles stash list' and 'dotfiles stash apply' to recover." -ForegroundColor Yellow
 	}
     
-	# Show status
-	dotfiles status
+	# Show status with parallel processing
+	Write-Host "`nRunning parallel status check..." -ForegroundColor Cyan
+	dotfiles status --porcelain=v1 --find-renames
 }
 
 function Add-DotFile {
