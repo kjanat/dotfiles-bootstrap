@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
 
-# Simple shell detection - prioritize what actually works
-if command -v pwsh &> /dev/null; then
-    exec pwsh -NoProfile -ExecutionPolicy Bypass -File ./bootstrap.ps1
-elif command -v powershell &> /dev/null; then
-    exec powershell -NoProfile -ExecutionPolicy Bypass -File ./bootstrap.ps1
-else
-    # Default to bash for Unix-like systems
+# OS-based detection - prioritize the actual platform, not just available shells
+# This prevents using PowerShell scripts on Linux just because pwsh is installed
+
+case "$(uname -s)" in
+CYGWIN* | MINGW32* | MINGW64* | MSYS*)
+    # Windows environments (including Git Bash, MSYS2, Cygwin)
+    if command -v pwsh &>/dev/null; then
+        exec pwsh -NoProfile -ExecutionPolicy Bypass -File ./bootstrap.ps1
+    elif command -v powershell &>/dev/null; then
+        exec powershell -NoProfile -ExecutionPolicy Bypass -File ./bootstrap.ps1
+    else
+        # Fallback to bash on Windows if no PowerShell available
+        exec bash ./bootstrap.sh
+    fi
+    ;;
+*)
+    # Unix-like systems (Linux, macOS, BSD, etc.)
+    # Even if PowerShell is installed, use the Unix scripts for proper Unix tooling
     exec bash ./bootstrap.sh
-fi
+    ;;
+esac

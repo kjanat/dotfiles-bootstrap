@@ -6,7 +6,7 @@ Bootstrap and setup scripts for managing dotfiles configuration across multiple 
 
 Choose your platform and run the appropriate bootstrap command:
 
-### Linux/macOS
+### Linux/macOS/Unix
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kjanat/dotfiles-bootstrap/master/bootstrap.sh | bash
 ```
@@ -16,14 +16,10 @@ curl -fsSL https://raw.githubusercontent.com/kjanat/dotfiles-bootstrap/master/bo
 iex (iwr https://raw.githubusercontent.com/kjanat/dotfiles-bootstrap/master/bootstrap.ps1).Content
 ```
 
-### Windows (Command Prompt)
-```cmd
-bootstrap.bat
-```
-
-### C Shell (csh/tcsh)
-```csh
-bootstrap.csh
+### Universal Script (Automatic Detection)
+```bash
+# This automatically detects your OS and runs the appropriate script
+./bootstrap
 ```
 
 ## What This Does
