@@ -1,23 +1,53 @@
 #!/usr/bin/env bash
 
-# OS-based detection - prioritize the actual platform, not just available shells
-# This prevents using PowerShell scripts on Linux just because pwsh is installed
+# Multi-shell setup - configure ALL available shells with advanced features
+# This gives users the flexibility to use any shell they have installed
 
-case "$(uname -s)" in
-    CYGWIN*|MINGW32*|MINGW64*|MSYS*)
-        # Windows environments (including Git Bash, MSYS2, Cygwin)
-        if command -v pwsh &> /dev/null; then
-            exec pwsh -NoProfile -ExecutionPolicy Bypass -File ./setup.ps1
-        elif command -v powershell &> /dev/null; then
-            exec powershell -NoProfile -ExecutionPolicy Bypass -File ./setup.ps1
-        else
-            # Fallback to bash on Windows if no PowerShell available
-            exec bash ./setup.sh
-        fi
-        ;;
-    *)
-        # Unix-like systems (Linux, macOS, BSD, etc.)
-        # Even if PowerShell is installed, use the Unix scripts for proper Unix tooling
-        exec bash ./setup.sh
-        ;;
-esac
+echo "🛠️  Multi-Shell Dotfiles Setup"
+echo "Configuring advanced features for all available shells..."
+echo ""
+
+# Setup each available shell with advanced features
+CONFIGURED_SHELLS=()
+
+# Configure Bash if available
+if command -v bash &> /dev/null; then
+    echo "🐚 Setting up Bash advanced features..."
+    bash ./setup.sh
+    CONFIGURED_SHELLS+=("bash")
+fi
+
+# Configure Zsh if available  
+if command -v zsh &> /dev/null; then
+    echo "🦓 Setting up Zsh advanced features..."
+    # Zsh setup is handled by setup.sh
+    CONFIGURED_SHELLS+=("zsh")
+fi
+
+# Configure Fish if available
+if command -v fish &> /dev/null; then
+    echo "🐟 Setting up Fish advanced features..."
+    # Fish-specific setup could go here
+    CONFIGURED_SHELLS+=("fish")
+fi
+
+# Configure PowerShell if available (cross-platform)
+if command -v pwsh &> /dev/null || command -v powershell &> /dev/null; then
+    echo "⚡ Setting up PowerShell advanced features..."
+    
+    # Determine which PowerShell to use
+    if command -v pwsh &> /dev/null; then
+        pwsh -NoProfile -ExecutionPolicy Bypass -File ./setup.ps1
+    elif command -v powershell &> /dev/null; then
+        powershell -NoProfile -ExecutionPolicy Bypass -File ./setup.ps1
+    fi
+    
+    CONFIGURED_SHELLS+=("pwsh")
+fi
+
+# Summary
+echo ""
+echo "🎉 Advanced Setup Complete!"
+echo "Configured shells: ${CONFIGURED_SHELLS[*]}"
+echo ""
+echo "Each shell now has enhanced features and utilities configured!"

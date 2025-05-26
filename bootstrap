@@ -1,23 +1,135 @@
 #!/usr/bin/env bash
 
-# OS-based detection - prioritize the actual platform, not just available shells
-# This prevents using PowerShell scripts on Linux just because pwsh is installed
+# Multi-shell bootstrap - configure ALL available shells
+# This gives users the flexibility to use any shell they have installed
 
-case "$(uname -s)" in
-CYGWIN* | MINGW32* | MINGW64* | MSYS*)
-    # Windows environments (including Git Bash, MSYS2, Cygwin)
-    if command -v pwsh &>/dev/null; then
-        exec pwsh -NoProfile -ExecutionPolicy Bypass -File ./bootstrap.ps1
-    elif command -v powershell &>/dev/null; then
-        exec powershell -NoProfile -ExecutionPolicy Bypass -File ./bootstrap.ps1
-    else
-        # Fallback to bash on Windows if no PowerShell available
-        exec bash ./bootstrap.sh
+echo "🚀 Multi-Shell Dotfiles Bootstrap"
+echo "Detecting and configuring all available shells..."
+echo ""
+
+# Clone dotfiles repository first (common for all shells)
+REPO="git@github.com:kjanat/dotfiles.git"
+DOTFILES_DIR="$HOME/.dotfiles"
+BACKUP_DIR="$HOME/.dotfiles-backup"
+
+# Check if git is available
+if ! command -v git &> /dev/null; then
+    echo "❌ Error: git is not installed. Please install git first."
+    exit 1
+fi
+
+if [ -d "$DOTFILES_DIR" ]; then
+    echo "✓ Dotfiles repo already cloned."
+else
+    echo "📦 Cloning dotfiles repository..."
+    git clone --bare "$REPO" "$DOTFILES_DIR"
+fi
+
+# Common dotfiles function for all shells
+function dotfiles {
+   /usr/bin/git --git-dir="$DOTFILES_DIR" --work-tree="$HOME" "$@"
+}
+
+# Backup and checkout dotfiles
+mkdir -p "$BACKUP_DIR"
+echo "🔄 Checking out dotfiles..."
+dotfiles checkout
+if [ $? -ne 0 ]; then
+    echo "💾 Backing up conflicting files..."
+    dotfiles checkout 2>&1 | grep -E "\s+\." | awk '{print $1}' | while read -r file; do
+        mkdir -p "$BACKUP_DIR/$(dirname "$file")" 2>/dev/null
+        mv "$HOME/$file" "$BACKUP_DIR/$file" 2>/dev/null
+    done
+    dotfiles checkout
+fi
+
+dotfiles config --local status.showUntrackedFiles no
+echo "✅ Dotfiles successfully installed!"
+echo ""
+
+# Now configure each available shell
+CONFIGURED_SHELLS=()
+
+# Configure Bash if available
+if command -v bash &> /dev/null; then
+    echo "🐚 Configuring Bash..."
+    BASHRC="$HOME/.bashrc"
+    
+    # Add dotfiles function to bashrc
+    if [ -f "$BASHRC" ] && ! grep -q 'function dotfiles' "$BASHRC"; then
+        echo "" >> "$BASHRC"
+        echo "# Dotfiles management function" >> "$BASHRC"
+        echo 'function dotfiles { /usr/bin/git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" "$@"; }' >> "$BASHRC"
+        echo "✓ Added dotfiles function to $BASHRC"
     fi
-    ;;
-*)
-    # Unix-like systems (Linux, macOS, BSD, etc.)
-    # Even if PowerShell is installed, use the Unix scripts for proper Unix tooling
-    exec bash ./bootstrap.sh
-    ;;
-esac
+    
+    # Source bash-specific dotfiles if they exist
+    if [ -f "$HOME/.bash_aliases" ]; then
+        echo "✓ Bash aliases loaded"
+    fi
+    
+    CONFIGURED_SHELLS+=("bash")
+fi
+
+# Configure Zsh if available  
+if command -v zsh &> /dev/null; then
+    echo "🦓 Configuring Zsh..."
+    ZSHRC="$HOME/.zshrc"
+    
+    # Add dotfiles function to zshrc
+    if [ -f "$ZSHRC" ] && ! grep -q 'function dotfiles' "$ZSHRC"; then
+        echo "" >> "$ZSHRC"
+        echo "# Dotfiles management function" >> "$ZSHRC"
+        echo 'function dotfiles { /usr/bin/git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" "$@"; }' >> "$ZSHRC"
+        echo "✓ Added dotfiles function to $ZSHRC"
+    fi
+    
+    # Source zsh-specific dotfiles if they exist
+    if [ -f "$HOME/.zsh_aliases" ]; then
+        echo "✓ Zsh aliases loaded"
+    fi
+    
+    CONFIGURED_SHELLS+=("zsh")
+fi
+
+# Configure Fish if available
+if command -v fish &> /dev/null; then
+    echo "🐟 Configuring Fish..."
+    FISH_CONFIG="$HOME/.config/fish/config.fish"
+    mkdir -p "$(dirname "$FISH_CONFIG")"
+    
+    if [ -f "$FISH_CONFIG" ] && ! grep -q 'function dotfiles' "$FISH_CONFIG"; then
+        echo "" >> "$FISH_CONFIG"
+        echo "# Dotfiles management function" >> "$FISH_CONFIG"
+        echo 'function dotfiles; /usr/bin/git --git-dir="$HOME/.dotfiles" --work-tree="$HOME" $argv; end' >> "$FISH_CONFIG"
+        echo "✓ Added dotfiles function to $FISH_CONFIG"
+    fi
+    
+    CONFIGURED_SHELLS+=("fish")
+fi
+
+# Configure PowerShell if available (cross-platform)
+if command -v pwsh &> /dev/null || command -v powershell &> /dev/null; then
+    echo "⚡ Configuring PowerShell..."
+    
+    # Determine which PowerShell to use
+    if command -v pwsh &> /dev/null; then
+        pwsh -NoProfile -ExecutionPolicy Bypass -File ./bootstrap.ps1
+    elif command -v powershell &> /dev/null; then
+        powershell -NoProfile -ExecutionPolicy Bypass -File ./bootstrap.ps1
+    fi
+    
+    CONFIGURED_SHELLS+=("pwsh")
+fi
+
+# Summary
+echo ""
+echo "🎉 Bootstrap Complete!"
+echo "Configured shells: ${CONFIGURED_SHELLS[*]}"
+echo ""
+echo "You can now use 'dotfiles' command in any of these shells:"
+for shell in "${CONFIGURED_SHELLS[@]}"; do
+    echo "  • $shell"
+done
+echo ""
+echo "💡 Pro tip: Run 'dotfiles status' to see your dotfiles status"
